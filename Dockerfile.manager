@@ -1,0 +1,63 @@
+# ComfyFleet manager.
+# Control HTTP API and web UI. No CUDA toolkit in this image.
+# Sibling ComfyUI containers are created on the host engine via /var/run/docker.sock.
+# Instance images (ghcr.io/recognizeyourprivilege/comfyfleet-images) stay on the host.
+# Create pulls a missing instance image. This image does not bake one.
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    COMFYFLEET_MANAGER=1 \
+    COMFYFLEET_BIND_HOST=0.0.0.0 \
+    COMFYFLEET_BIND_PORT=9100 \
+    COMFYFLEET_UI_DIR=/opt/comfyfleet/ui \
+    PATH=/opt/venv/bin:/usr/local/bin:${PATH}
+
+# git clones create-time custom node repos onto the host custom_nodes mount.
+# unzip is for operators. Create extracts zips in-process so a path-traversal
+# member can be rejected before anything is written. This is the manager
+# image only. Instance images are not rebuilt to bake those nodes.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        python3 \
+        python3-pip \
+        python3-venv \
+        unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -c 'import sys; assert sys.version_info[:2] >= (3, 11), sys.version'
+
+# Docker client only. The daemon is the host's, through the mounted socket.
+ARG DOCKER_CLI_VERSION=27.5.1
+RUN curl -fsSL -o /tmp/docker.tgz \
+        "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" \
+    && tar -xzf /tmp/docker.tgz -C /tmp \
+    && mv /tmp/docker/docker /usr/local/bin/docker \
+    && chmod 0755 /usr/local/bin/docker \
+    && rm -rf /tmp/docker /tmp/docker.tgz \
+    && docker --version
+
+RUN python3 -m venv /opt/venv
+
+WORKDIR /opt/comfyfleet
+COPY pyproject.toml /opt/comfyfleet/pyproject.toml
+COPY comfyfleet /opt/comfyfleet/comfyfleet
+COPY ui /opt/comfyfleet/ui
+COPY docker/manager-entrypoint.sh /opt/comfyfleet/manager-entrypoint.sh
+
+RUN pip install --no-cache-dir /opt/comfyfleet \
+    && chmod 0755 /opt/comfyfleet/manager-entrypoint.sh \
+    && comfyfleet --version \
+    && test -f /opt/comfyfleet/ui/index.html \
+    && test -f /opt/comfyfleet/ui/comfyfleet-logo-ships.jpg
+
+EXPOSE 9100
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${COMFYFLEET_BIND_PORT}/api/health" >/dev/null || exit 1
+ENTRYPOINT ["/opt/comfyfleet/manager-entrypoint.sh"]

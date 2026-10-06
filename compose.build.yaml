@@ -1,0 +1,11 @@
+# Optional local manager build. Not the operator install path.
+#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+services:
+  manager:
+    image: ghcr.io/recognizeyourprivilege/comfyfleet-manager:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.manager
+    environment:
+      COMFYFLEET_INSTANCE_IMAGE: ${COMFYFLEET_INSTANCE_IMAGE:-ghcr.io/recognizeyourprivilege/comfyfleet-images:cu130}
+      COMFYFLEET_CUDA_TAG: ${COMFYFLEET_CUDA_TAG:-cu130}

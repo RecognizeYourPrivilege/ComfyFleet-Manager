@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="color-scheme" content="dark">
+  <title>Sign in — ComfyFleet</title>
+  <link rel="icon" href="/comfyfleet-logo-ships.jpg">
+  <link rel="apple-touch-icon" href="/comfyfleet-logo-ships.jpg">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <main class="login-wrap">
+    <form id="login-form" class="login-card glass" method="post" action="/api/login" autocomplete="off">
+      <figure class="login-hero">
+        <img src="/comfyfleet-logo-ships.jpg" alt="ComfyFleet — ships on the water">
+      </figure>
+      <div class="login-body">
+        <p class="eyebrow">Fleet control</p>
+        <h1>ComfyFleet</h1>
+        <p id="login-lead" class="sheet-lead">Sign in with the manager password.</p>
+
+        <p id="login-notice" class="login-notice" role="status" hidden></p>
+
+        <label class="field-label" for="password">Password</label>
+        <div class="login-field">
+          <input id="password" name="password" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="Manager password" required>
+          <button id="toggle-password" class="login-reveal" type="button" aria-pressed="false" aria-controls="password" aria-label="Show password">Show</button>
+        </div>
+
+        <p id="login-error" class="banner login-alert" role="alert" hidden></p>
+        <button id="login-submit" class="btn primary" type="submit">Sign in</button>
+        <p class="trust">Trusted LAN is still recommended. This sign-in gates the manager only. ComfyUI ports are not covered.</p>
+      </div>
+    </form>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const form = document.querySelector("#login-form");
+    const error = document.querySelector("#login-error");
+    const notice = document.querySelector("#login-notice");
+    const passwordInput = document.querySelector("#password");
+    const submit = document.querySelector("#login-submit");
+    const toggle = document.querySelector("#toggle-password");
+
+    function showNotice(text) {
+      error.hidden = true;
+      error.textContent = "";
+      notice.hidden = false;
+      notice.textContent = text;
+      passwordInput.removeAttribute("aria-invalid");
+    }
+
+    function showError(text) {
+      notice.hidden = true;
+      notice.textContent = "";
+      error.hidden = false;
+      error.textContent = text;
+      passwordInput.setAttribute("aria-invalid", "true");
+    }
+
+    if (params.get("expired")) {
+      showNotice("Session expired. Sign in again.");
+    }
+
+    toggle.addEventListener("click", () => {
+      const reveal = !passwordInput.classList.contains("is-revealed");
+      passwordInput.classList.toggle("is-revealed", reveal);
+      toggle.textContent = reveal ? "Hide" : "Show";
+      toggle.setAttribute("aria-pressed", reveal ? "true" : "false");
+      toggle.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+      passwordInput.focus();
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (submit.disabled) return;
+      const password = passwordInput.value;
+      submit.disabled = true;
+      submit.textContent = "Signing in…";
+      let response;
+      try {
+        response = await fetch("/api/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ password })
+        });
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = "Sign in";
+        showError("Control backend unreachable.");
+        passwordInput.focus();
+        return;
+      }
+      let payload = null;
+      try { payload = await response.json(); } catch (err) { payload = null; }
+      if (response.ok && payload && payload.ok) {
+        passwordInput.value = "";
+        window.location.assign("/");
+        return;
+      }
+      passwordInput.value = "";
+      submit.disabled = false;
+      submit.textContent = "Sign in";
+      if (response.status === 429) {
+        showError("Too many sign-in attempts. Wait a moment and try again.");
+      } else {
+        showError("Invalid credentials.");
+      }
+      passwordInput.focus();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyfleet"
+version = "0.1.0"
+description = "Manager container and control API for a ComfyUI workflow container fleet"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.scripts]
+comfyfleet = "comfyfleet.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["comfyfleet*"]

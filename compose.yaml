@@ -1,0 +1,28 @@
+# ComfyFleet manager. Pulls the prebuilt manager image from GHCR.
+# The instance image is not a compose service. The manager creates each
+# instance with docker create --shm-size 8g (Compose form: shm_size: '8g')
+# and pulls that image when it is missing on the host engine.
+# Default instance tag: ghcr.io/recognizeyourprivilege/comfyfleet-images:cu130
+# CUDA 12.4 line: ghcr.io/recognizeyourprivilege/comfyfleet-images:cu124
+# Changing an instance's CUDA line is a recreate, not a restart.
+# A local rebuild is compose.build.yaml.
+# The manager listens on 0.0.0.0 port 9100.
+
+services:
+  manager:
+    image: ${COMFYFLEET_MANAGER_IMAGE:-ghcr.io/recognizeyourprivilege/comfyfleet-manager:latest}
+    container_name: comfyfleet-manager
+    ports:
+      - "9100:9100"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/ComfyFleet:/home/ComfyFleet
+    environment:
+      COMFYFLEET_PASSWORD: ${COMFYFLEET_PASSWORD:?Set COMFYFLEET_PASSWORD}
+      COMFYFLEET_PUBLIC_HOST: ${COMFYFLEET_PUBLIC_HOST:-}
+      COMFYFLEET_INSTANCE_IMAGE: ${COMFYFLEET_INSTANCE_IMAGE:-ghcr.io/recognizeyourprivilege/comfyfleet-images:cu130}
+      COMFYFLEET_CUDA_TAG: ${COMFYFLEET_CUDA_TAG:-cu130}
+      COMFYFLEET_BIND_HOST: 0.0.0.0
+      COMFYFLEET_BIND_PORT: "9100"
+    gpus: all
+    restart: unless-stopped

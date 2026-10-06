@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="color-scheme" content="dark">
+  <title>ComfyFleet</title>
+  <link rel="icon" href="/comfyfleet-logo-ships.jpg">
+  <link rel="apple-touch-icon" href="/comfyfleet-logo-ships.jpg">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="app">
+    <header class="top glass">
+      <div class="brand-lockup">
+        <p class="eyebrow">Fleet control</p>
+        <h1>ComfyFleet</h1>
+      </div>
+      <div class="top-actions">
+        <button id="refresh" class="icon-btn" type="button" aria-label="Refresh fleet">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 12a8 8 0 1 1-2.3-5.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        </button>
+        <div class="host-menu">
+          <button id="host-menu-button" class="btn secondary" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="host-menu">Host</button>
+          <div id="host-menu" class="host-menu-panel glass" role="menu" hidden>
+            <button id="import-open" class="host-menu-item" type="button" role="menuitem">Import container</button>
+            <button id="import-dupes-open" class="host-menu-item" type="button" role="menuitem">Duplicates</button>
+            <button id="import-logs-open" class="host-menu-item" type="button" role="menuitem">Import logs</button>
+            <button id="fix-owner" class="host-menu-item" type="button" role="menuitem">Fix ownership</button>
+            <button id="prune-dangling" class="host-menu-item" type="button" role="menuitem">Prune dangling containers</button>
+            <button id="logout" class="host-menu-item" type="button" role="menuitem">Log out</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <figure class="logo-plate glass">
+      <img src="/comfyfleet-logo-ships.jpg" alt="ComfyFleet — ships on the water">
+    </figure>
+
+    <nav class="tabs" role="tablist" aria-label="Manager">
+      <button id="tab-fleet" class="tab" type="button" role="tab" aria-selected="true">Fleet</button>
+      <button id="tab-gallery" class="tab" type="button" role="tab" aria-selected="false">Gallery</button>
+    </nav>
+
+    <p id="updated" class="updated">Loading fleet…</p>
+    <div id="banner" class="banner" role="alert" hidden></div>
+    <div id="toast" class="toast glass" role="status" aria-live="polite" hidden></div>
+
+    <section id="empty" class="empty glass" hidden>
+      <h2>No instances yet</h2>
+      <p>Create one from your own workflow JSON. New instances stay stopped until you start them.</p>
+    </section>
+
+    <section id="list" class="list" aria-label="Fleet instances"></section>
+
+    <section id="gallery" hidden>
+      <div id="gallery-filters" class="chip-row" role="group" aria-label="Filter by instance"></div>
+      <p id="gallery-status" class="updated">Loading gallery…</p>
+      <div id="gallery-empty" class="empty glass" hidden>
+        <h2>Nothing generated yet</h2>
+        <p>No images or videos in the instance output folders yet.</p>
+      </div>
+      <div id="gallery-grid" class="gallery-grid" aria-label="Generated files"></div>
+      <button id="gallery-more" class="btn secondary gallery-more" type="button" hidden>Load more</button>
+    </section>
+
+    <footer id="trust" class="trust">
+      Trusted LAN is still recommended. This login gates the manager only. ComfyUI ports are not covered.
+    </footer>
+  </div>
+
+  <div class="dock glass">
+    <button id="open-create" class="btn primary" type="button">New instance</button>
+  </div>
+
+  <div id="sheet" class="sheet" hidden>
+    <button class="scrim" type="button" data-close aria-label="Close"></button>
+    <div class="sheet-card glass" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet-head">
+        <h2 id="sheet-title">New instance</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <p class="sheet-lead">An operator workflow JSON is required. ComfyFleet does not ship a default graph.</p>
+
+      <div id="sheet-banner" class="banner" role="alert" hidden></div>
+
+      <label class="field-label" for="workflow-file">Workflow JSON</label>
+      <div class="file-well">
+        <input id="workflow-file" type="file" accept="application/json,.json">
+        <p id="file-name">No file chosen</p>
+      </div>
+
+      <label class="field-label" for="workflow-path">Or host path</label>
+      <input id="workflow-path" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="/home/you/flows/portrait.json">
+      <p class="hint">Use a path only if this server runs as a user who can read it. Leave it empty when you upload a file.</p>
+
+      <label class="field-label" for="instance-name">Container name <span class="optional-tag">optional</span></label>
+      <input id="instance-name" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="From the workflow file">
+      <p class="hint">Leave blank to use the workflow JSON filename. <code>Portrait.json</code> becomes <code>portrait</code>. A name you type is the container name.</p>
+
+      <p class="field-label" id="cuda-label">CUDA line</p>
+      <div class="cuda-row" role="radiogroup" aria-labelledby="cuda-label">
+        <label class="choice">
+          <input type="radio" name="cuda-tag" value="cu130" checked>
+          <span>cu130<small>Host driver CUDA 13.0. Default.</small></span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="cuda-tag" value="cu124">
+          <span>cu124<small>Host driver CUDA 12.4.</small></span>
+        </label>
+      </div>
+      <p class="hint">Match the host NVIDIA driver major. The wrong line can fail when the instance starts. Changing the line on an existing instance requires a recreate (replace the stopped instance). Flags Apply and restart keep the line it was created with. Every create uses <code>--shm-size 8g</code>.</p>
+      <label class="field-label" for="instance-image">Image override <span class="optional-tag">optional</span></label>
+      <input id="instance-image" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="ghcr.io/recognizeyourprivilege/comfyfleet-images:cu130">
+      <p class="hint">Leave empty to use the selected line. A value here is the image ref passed to docker create. If that image is missing on the host engine, create pulls it.</p>
+
+      <p class="field-label" id="gpu-label">GPUs</p>
+      <div id="gpus" class="gpu-row" role="group" aria-labelledby="gpu-label"></div>
+      <p id="gpu-note" class="hint"></p>
+
+      <section class="optional-nodes" aria-labelledby="nodes-label">
+        <p class="field-label" id="nodes-label">Custom nodes <span class="optional-tag">optional</span></p>
+        <p class="hint">Optional — leave blank to skip. Create still requires a workflow. Empty git URLs and no zip are a no-op.</p>
+        <label class="field-label" for="custom-node-git-urls">Git URL(s)</label>
+        <textarea id="custom-node-git-urls" class="text-input" rows="3" spellcheck="false" autocomplete="off" placeholder="https://github.com/owner/repo"></textarea>
+        <p class="hint">One URL per line. Blank lines are ignored.</p>
+        <label class="field-label" for="custom-nodes-zip">Zip of node packs</label>
+        <div class="file-well">
+          <input id="custom-nodes-zip" type="file" accept=".zip,application/zip" multiple>
+          <p id="zip-name">No zip chosen</p>
+        </div>
+        <div id="zip-packs" class="zip-packs"></div>
+        <p class="hint">One or more zip files. Each row can set that pack's folder name. Leave a name blank to use <code>[project].name</code> from that zip's <code>pyproject.toml</code>. A name you type wins.</p>
+        <label class="check install-missing">
+          <input id="install-missing-from-workflow" type="checkbox" checked>
+          <span>Install nodes missing from this workflow<small>Trusted Manager path only. Not the whole registry. Uncheck to skip.</small></span>
+        </label>
+      </section>
+
+      <details class="disclosure" id="comfy-flags">
+        <summary>Advanced / ComfyUI flags</summary>
+      <div class="flag-panel" role="group" aria-labelledby="flags-label">
+        <p class="field-label" id="flags-label">Launch flags</p>
+        <p class="hint">Nothing selected starts ComfyUI with only <code>--listen 0.0.0.0</code> and the container port. Those two stay locked. On a 12GB GPU such as an RTX A2000, <code>--lowvram</code> alone is a no-op while dynamic VRAM is on. Use <code>--lowvram</code> and <code>--disable-dynamic-vram</code> together.</p>
+
+        <p class="flag-sub" id="vram-label">VRAM</p>
+        <div class="choice-col" role="radiogroup" aria-labelledby="vram-label">
+          <label class="choice">
+            <input type="radio" name="vram" value="" checked>
+            <span>Default<small>No VRAM flag.</small></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="vram" value="--lowvram">
+            <span>--lowvram<small>On a 12GB GPU (RTX A2000), --lowvram alone is a no-op while dynamic VRAM is on. Also check --disable-dynamic-vram.</small></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="vram" value="--novram">
+            <span>--novram<small>When lowvram is not enough.</small></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="vram" value="--highvram">
+            <span>--highvram<small>Keep models in GPU memory.</small></span>
+          </label>
+        </div>
+
+        <label class="field-label" for="reserve-vram">Reserve VRAM (GB)</label>
+        <input id="reserve-vram" class="text-input" type="number" min="0" step="any" inputmode="decimal" placeholder="empty = omit">
+        <p class="hint">Sent as <code>--reserve-vram</code>. Leave empty to omit it.</p>
+        <label class="field-label" for="vram-headroom">VRAM headroom (GB)</label>
+        <input id="vram-headroom" class="text-input" type="number" min="0" step="any" inputmode="decimal" placeholder="empty = omit">
+        <p class="hint">Sent as <code>--vram-headroom</code>. Leave empty to omit it.</p>
+
+        <p class="flag-sub" id="attention-label">Attention</p>
+        <div class="choice-col" role="radiogroup" aria-labelledby="attention-label">
+          <label class="choice">
+            <input type="radio" name="attention" value="" checked>
+            <span>Default<small>No attention flag.</small></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="attention" value="--use-pytorch-cross-attention">
+            <span>--use-pytorch-cross-attention</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="attention" value="--use-sage-attention">
+            <span>--use-sage-attention</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="attention" value="--use-flash-attention">
+            <span>--use-flash-attention</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="attention" value="--use-split-cross-attention">
+            <span>--use-split-cross-attention</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="attention" value="--use-quad-cross-attention">
+            <span>--use-quad-cross-attention</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="attention" value="--use-ck-attention">
+            <span>--use-ck-attention</span>
+          </label>
+        </div>
+
+        <p class="flag-sub">Applied</p>
+        <div id="applied-flags" class="chip-row" aria-live="polite"></div>
+        <div id="flag-catalog"></div>
+        <div class="flag-sources">
+        <p class="flag-sub">Dtype</p>
+        <label class="check"><input type="checkbox" name="flag" value="--force-fp16" data-exclusive="fp" data-section="precision"><span>--force-fp16<small>Also forces the UNet to fp16.</small></span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--force-fp32" data-exclusive="fp" data-section="precision"><span>--force-fp32</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp16-unet" data-exclusive="unet" data-section="precision"><span>--fp16-unet</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--bf16-unet" data-exclusive="unet" data-section="precision"><span>--bf16-unet</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp32-unet" data-exclusive="unet" data-section="precision"><span>--fp32-unet</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp64-unet" data-exclusive="unet" data-section="precision"><span>--fp64-unet</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp8_e4m3fn-unet" data-exclusive="unet" data-section="precision"><span>--fp8_e4m3fn-unet</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp8_e5m2-unet" data-exclusive="unet" data-section="precision"><span>--fp8_e5m2-unet</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp8_e8m0fnu-unet" data-exclusive="unet" data-section="precision"><span>--fp8_e8m0fnu-unet</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp16-intermediates" data-section="precision"><span>--fp16-intermediates</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp16-vae" data-exclusive="vae" data-section="precision"><span>--fp16-vae</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp32-vae" data-exclusive="vae" data-section="precision"><span>--fp32-vae</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--bf16-vae" data-exclusive="vae" data-section="precision"><span>--bf16-vae</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp8_e4m3fn-text-enc" data-exclusive="textenc" data-section="precision"><span>--fp8_e4m3fn-text-enc</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp8_e5m2-text-enc" data-exclusive="textenc" data-section="precision"><span>--fp8_e5m2-text-enc</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp16-text-enc" data-exclusive="textenc" data-section="precision"><span>--fp16-text-enc</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fp32-text-enc" data-exclusive="textenc" data-section="precision"><span>--fp32-text-enc</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--bf16-text-enc" data-exclusive="textenc" data-section="precision"><span>--bf16-text-enc</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--force-channels-last" data-section="precision"><span>--force-channels-last</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--supports-fp8-compute" data-section="precision"><span>--supports-fp8-compute</span></label>
+
+        <p class="flag-sub">Caching</p>
+        <label class="check"><input type="checkbox" name="flag" value="--cache-classic" data-exclusive="cache" data-section="caching"><span>--cache-classic</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--cache-none" data-exclusive="cache" data-section="caching"><span>--cache-none</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--high-ram" data-exclusive="cache" data-section="caching"><span>--high-ram</span></label>
+
+        <p class="flag-sub">Memory</p>
+        <label class="check"><input type="checkbox" name="flag" value="--cpu" data-exclusive="vram" data-section="vram"><span>--cpu<small>Use the CPU for everything (slow).</small></span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--gpu-only" data-exclusive="vram" data-section="vram"><span>--gpu-only<small>Keep text encoders and CLIP on the GPU.</small></span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--disable-smart-memory" data-section="vram"><span>--disable-smart-memory</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--disable-dynamic-vram" data-exclusive="dynvram" data-section="vram"><span>--disable-dynamic-vram<small>Independent of the VRAM radio. Pair it with --lowvram on a 12GB card.</small></span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--enable-dynamic-vram" data-exclusive="dynvram" data-section="vram"><span>--enable-dynamic-vram</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--cuda-malloc" data-exclusive="cudamalloc" data-section="vram"><span>--cuda-malloc</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--disable-cuda-malloc" data-exclusive="cudamalloc" data-section="vram"><span>--disable-cuda-malloc</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--disable-pinned-memory" data-section="vram"><span>--disable-pinned-memory</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--fast-disk" data-exclusive="fastdisk" data-section="vram"><span>--fast-disk</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--disable-fast-disk" data-exclusive="fastdisk" data-section="vram"><span>--disable-fast-disk</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--cpu-vae" data-section="vram"><span>--cpu-vae</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--deterministic" data-section="misc"><span>--deterministic</span></label>
+        <label class="check"><input type="checkbox" name="flag" value="--disable-xformers" data-section="misc"><span>--disable-xformers</span></label>
+        </div>
+
+        <label class="field-label" for="preview-method">Preview method</label>
+        <select id="preview-method" class="text-input">
+          <option value="">Default (omit)</option>
+          <option value="auto">auto</option>
+          <option value="latent2rgb">latent2rgb</option>
+          <option value="taesd">taesd</option>
+          <option value="none">none</option>
+        </select>
+        <label class="field-label" for="preview-size">Preview size</label>
+        <input id="preview-size" class="text-input" type="number" min="1" max="8192" step="1" inputmode="numeric" placeholder="empty = omit">
+
+        <label class="field-label" for="extra-args">Extra args</label>
+        <textarea id="extra-args" class="text-input" rows="3" spellcheck="false" autocomplete="off" placeholder="--mmap-torch-files"></textarea>
+        <p class="hint">Appended last, after the selected flags. Pasted <code>--listen</code> and <code>--port</code> are removed. Replace a stopped instance to change flags.</p>
+      </div>
+      </details>
+
+      <label class="switch">
+        <input id="force" type="checkbox">
+        <span>Replace a stopped instance with the same name</span>
+      </label>
+
+      <div class="sheet-actions">
+        <button id="create-stopped" class="btn primary" type="button">Create</button>
+        <button id="create-start" class="btn secondary" type="button">Create &amp; start</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirm" class="sheet" hidden>
+    <button class="scrim" type="button" data-confirm-no aria-label="Cancel"></button>
+    <div class="sheet-card glass confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Delete instance</h2>
+      <p id="confirm-text"></p>
+      <div id="confirm-fields" hidden>
+        <label class="field-label" for="confirm-user">User</label>
+        <input id="confirm-user" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="comfyuser">
+        <label class="field-label" for="confirm-group">Group</label>
+        <input id="confirm-group" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="comfyuser">
+        <p class="hint">Leave a field blank to use comfyuser. A missing user or group is created with home /home/ComfyFleet.</p>
+      </div>
+      <div class="sheet-actions">
+        <button id="confirm-yes" class="btn danger" type="button">Delete</button>
+        <button id="confirm-no" class="btn secondary" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="lightbox" class="lightbox" hidden>
+    <button id="lb-scrim" class="scrim" type="button" aria-label="Close preview"></button>
+    <div class="lightbox-card glass" role="dialog" aria-modal="true" aria-labelledby="lb-name">
+      <div class="sheet-head">
+        <h2 id="lb-name">Preview</h2>
+        <button id="lb-close" class="icon-btn" type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div id="lb-stage" class="lb-stage">
+        <button id="lb-prev" class="lb-nav prev" type="button" aria-label="Previous">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <img id="lb-image" alt="" hidden>
+        <video id="lb-video" controls playsinline hidden></video>
+        <button id="lb-next" class="lb-nav next" type="button" aria-label="Next">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6.5 15 12l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <p id="lb-meta" class="meta"></p>
+      <div class="sheet-actions">
+        <button id="lb-download" class="btn secondary" type="button">Download</button>
+        <button id="lb-open" class="btn secondary" type="button">Open in ComfyUI</button>
+        <button id="lb-delete" class="btn danger" type="button">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="import-pill" class="import-pill glass" type="button" hidden>
+    <span id="import-pill-label">Import</span>
+  </button>
+
+  <div id="import-plan" class="sheet" hidden>
+    <button class="scrim" type="button" data-plan-close aria-label="Close"></button>
+    <div class="sheet-card glass" role="dialog" aria-modal="true" aria-labelledby="import-plan-title">
+      <div class="sheet-head">
+        <h2 id="import-plan-title">Import container</h2>
+        <button class="icon-btn" type="button" data-plan-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p class="sheet-lead">Copy or move an existing container into this fleet. Models go to the shared models folder. The old container stays until you choose Remove old.</p>
+      <div id="import-plan-banner" class="banner" role="alert" hidden></div>
+      <div id="import-containers" class="import-list"></div>
+      <div id="import-form" hidden>
+        <p id="import-source" class="meta"></p>
+        <label class="field-label" for="import-name">New name</label>
+        <input id="import-name" class="text-input" type="text" autocomplete="off" spellcheck="false">
+        <label class="field-label" for="import-port">Port</label>
+        <input id="import-port" class="text-input" type="number" min="1" max="65535" inputmode="numeric">
+        <p class="field-label" id="import-mode-label">Transfer</p>
+        <div class="choice-col" role="radiogroup" aria-labelledby="import-mode-label">
+          <label class="choice"><input type="radio" name="import-mode" value="copy" checked><span>Copy<small>Leave every source file in place.</small></span></label>
+          <label class="choice"><input id="import-mode-move" type="radio" name="import-mode" value="move"><span>Move<small>Delete each source file only after the destination hash matches.</small></span></label>
+        </div>
+        <p id="import-move-note" class="hint" hidden>This container is running. Stop it before Move. Import will not stop it.</p>
+        <p id="import-unseen-note" class="hint" hidden>A mount is not visible inside the manager. Those files are read with docker cp. Move stays off because the source file cannot be deleted from here.</p>
+        <p class="field-label" id="import-nodes-label">Custom nodes</p>
+        <div class="choice-col" role="radiogroup" aria-labelledby="import-nodes-label">
+          <label class="choice"><input type="radio" name="import-nodes" value="as-is" checked><span>Bring over as-is<small>Default. The folder is copied onto this instance.</small></span></label>
+          <label class="choice"><input type="radio" name="import-nodes" value="fresh"><span>Reinstall fresh<small>Skip the old custom nodes. This image's baked nodes are used.</small></span></label>
+        </div>
+        <label class="field-label" for="import-cuda">CUDA line</label>
+        <select id="import-cuda" class="text-input">
+          <option value="cu130">cu130</option>
+          <option value="cu124">cu124</option>
+        </select>
+        <p class="field-label" id="import-gpu-label">GPUs</p>
+        <div id="import-gpus" class="gpu-row" role="group" aria-labelledby="import-gpu-label"></div>
+        <label class="field-label" for="import-workflow">Workflow</label>
+        <select id="import-workflow" class="text-input"></select>
+        <p class="hint">New directories are owned by comfyuser:comfyuser, the same default as Fix ownership.</p>
+        <p class="field-label">Folder map</p>
+        <div id="import-mounts" class="import-mounts"></div>
+        <p class="field-label">Environment</p>
+        <div id="import-env" class="import-env" aria-readonly="true"></div>
+        <div id="import-counts" class="import-counts" hidden></div>
+        <div class="sheet-actions">
+          <button id="import-scan" class="btn secondary" type="button">Hash and review</button>
+          <button id="import-start" class="btn primary" type="button" hidden>Start import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="import-overlay" class="sheet" hidden>
+    <button class="scrim" type="button" data-overlay-hide aria-label="Hide progress"></button>
+    <div class="sheet-card glass" role="dialog" aria-modal="true" aria-labelledby="import-overlay-title">
+      <div class="sheet-head">
+        <h2 id="import-overlay-title">Import</h2>
+        <button class="icon-btn" type="button" data-overlay-hide aria-label="Hide progress">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p id="import-phase" class="sheet-lead">Hashing</p>
+      <p id="import-current" class="import-current"></p>
+      <div class="meter"><div id="import-file-bar"></div></div>
+      <p id="import-file-label" class="hint"></p>
+      <div class="meter"><div id="import-overall-bar"></div></div>
+      <p id="import-overall-label" class="hint"></p>
+      <dl id="import-stats" class="import-stats"></dl>
+      <p id="import-space" class="import-warn" hidden>Low disk space at the destination.</p>
+      <pre id="import-log" class="import-log"></pre>
+      <div class="sheet-actions">
+        <button id="import-pause" class="btn secondary" type="button">Pause</button>
+        <button id="import-resume" class="btn secondary" type="button" hidden>Resume</button>
+        <button id="import-cancel" class="btn danger" type="button">Cancel</button>
+        <button id="import-overlay-start" class="btn primary" type="button" hidden>Start transfer</button>
+        <button id="import-remove-old" class="btn danger" type="button" hidden>Remove old</button>
+        <button id="import-dismiss" class="btn secondary" type="button" hidden>Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="import-dupes" class="sheet" hidden>
+    <button class="scrim" type="button" data-dupes-close aria-label="Close"></button>
+    <div class="sheet-card glass" role="dialog" aria-modal="true" aria-labelledby="import-dupes-title">
+      <div class="sheet-head">
+        <h2 id="import-dupes-title">Duplicates</h2>
+        <button class="icon-btn" type="button" data-dupes-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p class="sheet-lead">Read-only. A renamed copy whose hash already exists is listed here and in that import's log. This list only grows.</p>
+      <div id="import-dupe-list" class="import-dupe-list" aria-readonly="true"></div>
+    </div>
+  </div>
+
+  <div id="import-logs" class="sheet" hidden>
+    <button class="scrim" type="button" data-logs-close aria-label="Close"></button>
+    <div class="sheet-card glass" role="dialog" aria-modal="true" aria-labelledby="import-logs-title">
+      <div class="sheet-head">
+        <h2 id="import-logs-title">Import logs</h2>
+        <button class="icon-btn" type="button" data-logs-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div id="import-log-list" class="import-list"></div>
+      <pre id="import-log-view" class="import-log" hidden></pre>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
